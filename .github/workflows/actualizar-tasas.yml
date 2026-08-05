@@ -9,7 +9,7 @@ jobs:
   actualizar:
     runs-on: ubuntu-latest
     steps:
-      - name: Consultar DolarApi y guardar en Firebase
+      - name: Consultar DolarApi, Binance P2P y guardar en Firebase
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
         run: |
@@ -21,12 +21,44 @@ jobs:
           OFICIAL_FMT=$(python3 -c "print(round(float('$OFICIAL'),2))")
           FECHA=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
-          echo "Compra: $COMPRA | Venta: $VENTA | Oficial: $OFICIAL_FMT"
+          echo "Compra: $COMPRA | Venta (paralelo, en uso): $VENTA | Oficial: $OFICIAL_FMT"
 
-          # Actualiza la tasa vigente (nodo único que lee el portal)
+          # --- PRUEBA: Binance P2P directo (servidor, sin bloqueo de CORS) ---
+          # Todavía NO se usa en el tablero — se guarda aparte para comparar primero.
+          BINANCE_RAW_SELL=$(curl -s -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
+            -H "Content-Type: application/json" \
+            -d '{"asset":"USDT","fiat":"VES","tradeType":"SELL","page":1,"rows":5,"payTypes":[]}' || echo '{}')
+          BINANCE_RAW_BUY=$(curl -s -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
+            -H "Content-Type: application/json" \
+            -d '{"asset":"USDT","fiat":"VES","tradeType":"BUY","page":1,"rows":5,"payTypes":[]}' || echo '{}')
+
+          echo "Respuesta Binance (SELL, primeras 300 letras): ${BINANCE_RAW_SELL:0:300}"
+          echo "Respuesta Binance (BUY, primeras 300 letras): ${BINANCE_RAW_BUY:0:300}"
+
+          BINANCE_SELL_MEDIANA=$(echo "$BINANCE_RAW_SELL" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    precios = sorted(float(x['adv']['price']) for x in d.get('data', []))
+    print(precios[len(precios)//2] if precios else '')
+except Exception as e:
+    print('')
+")
+          BINANCE_BUY_MEDIANA=$(echo "$BINANCE_RAW_BUY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    precios = sorted(float(x['adv']['price']) for x in d.get('data', []))
+    print(precios[len(precios)//2] if precios else '')
+except Exception as e:
+    print('')
+")
+          echo "Binance SELL mediana: $BINANCE_SELL_MEDIANA | Binance BUY mediana: $BINANCE_BUY_MEDIANA"
+
+          # Actualiza la tasa vigente (nodo único que lee el portal) — venta sigue usando DolarApi por ahora
           curl -s -X PUT \
             -H "Content-Type: application/json" \
-            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"oficial\":\"$OFICIAL_FMT\",\"fecha\":\"$FECHA\",\"auto\":true}" \
+            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"oficial\":\"$OFICIAL_FMT\",\"fecha\":\"$FECHA\",\"auto\":true,\"binance_sell_debug\":\"$BINANCE_SELL_MEDIANA\",\"binance_buy_debug\":\"$BINANCE_BUY_MEDIANA\"}" \
             "$FIREBASE_DB_URL/p58p2p-tasa.json"
 
           # Agrega un punto al historial (clave autogenerada, no se pisa con otros escritores)
