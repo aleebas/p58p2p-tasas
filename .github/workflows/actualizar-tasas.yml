@@ -1,0 +1,36 @@
+name: Actualizar tasas +58 P2P
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # cada 15 minutos, 24/7
+  workflow_dispatch: {}       # también se puede correr manualmente desde GitHub
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar DolarApi y guardar en Firebase
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+        run: |
+          set -e
+          OFICIAL=$(curl -s https://ve.dolarapi.com/v1/dolares/oficial | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('promedio') or d.get('venta') or d.get('compra'))")
+          PARALELO=$(curl -s https://ve.dolarapi.com/v1/dolares/paralelo | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('promedio') or d.get('venta') or d.get('compra'))")
+          COMPRA=$(python3 -c "print(round(float('$OFICIAL')*1.005,2))")
+          VENTA=$(python3 -c "print(round(float('$PARALELO'),2))")
+          OFICIAL_FMT=$(python3 -c "print(round(float('$OFICIAL'),2))")
+          FECHA=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+          echo "Compra: $COMPRA | Venta: $VENTA | Oficial: $OFICIAL_FMT"
+
+          # Actualiza la tasa vigente (nodo único que lee el portal)
+          curl -s -X PUT \
+            -H "Content-Type: application/json" \
+            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"oficial\":\"$OFICIAL_FMT\",\"fecha\":\"$FECHA\",\"auto\":true}" \
+            "$FIREBASE_DB_URL/p58p2p-tasa.json"
+
+          # Agrega un punto al historial (clave autogenerada, no se pisa con otros escritores)
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"fecha\":\"$FECHA\"}" \
+            "$FIREBASE_DB_URL/p58p2p-historial-cron.json"
