@@ -35,24 +35,8 @@ jobs:
           echo "Respuesta Binance (SELL, primeras 300 letras): ${BINANCE_RAW_SELL:0:300}"
           echo "Respuesta Binance (BUY, primeras 300 letras): ${BINANCE_RAW_BUY:0:300}"
 
-          BINANCE_SELL_MEDIANA=$(echo "$BINANCE_RAW_SELL" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    precios = sorted(float(x['adv']['price']) for x in d.get('data', []))
-    print(precios[len(precios)//2] if precios else '')
-except Exception as e:
-    print('')
-")
-          BINANCE_BUY_MEDIANA=$(echo "$BINANCE_RAW_BUY" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    precios = sorted(float(x['adv']['price']) for x in d.get('data', []))
-    print(precios[len(precios)//2] if precios else '')
-except Exception as e:
-    print('')
-")
+          BINANCE_SELL_MEDIANA=$(echo "$BINANCE_RAW_SELL" | python3 -c "import sys,json;d=json.load(sys.stdin);p=sorted(float(x['adv']['price']) for x in d.get('data',[]));print(p[len(p)//2] if p else '')" 2>/dev/null || echo '')
+          BINANCE_BUY_MEDIANA=$(echo "$BINANCE_RAW_BUY" | python3 -c "import sys,json;d=json.load(sys.stdin);p=sorted(float(x['adv']['price']) for x in d.get('data',[]));print(p[len(p)//2] if p else '')" 2>/dev/null || echo '')
           echo "Binance SELL mediana: $BINANCE_SELL_MEDIANA | Binance BUY mediana: $BINANCE_BUY_MEDIANA"
 
           # Actualiza la tasa vigente (nodo único que lee el portal) — venta sigue usando DolarApi por ahora
