@@ -39,10 +39,21 @@ jobs:
           BINANCE_BUY_MEDIANA=$(echo "$BINANCE_RAW_BUY" | python3 -c "import sys,json;d=json.load(sys.stdin);p=sorted(float(x['adv']['price']) for x in d.get('data',[]));print(p[len(p)//2] if p else '')" 2>/dev/null || echo '')
           echo "Binance SELL mediana: $BINANCE_SELL_MEDIANA | Binance BUY mediana: $BINANCE_BUY_MEDIANA"
 
-          # Actualiza la tasa vigente (nodo único que lee el portal) — venta sigue usando DolarApi por ahora
+          # Confirmado por Alejandro contra la app de Binance: usamos el dato real de Binance P2P
+          # como tasa de venta. Si por algún motivo la API de Binance falla ese día, cae de
+          # respaldo al "paralelo" de DolarApi para que el tablero nunca se quede sin dato.
+          if [ -n "$BINANCE_SELL_MEDIANA" ]; then
+            VENTA="$BINANCE_SELL_MEDIANA"
+            FUENTE_VENTA="binance_p2p"
+          else
+            FUENTE_VENTA="paralelo_respaldo"
+          fi
+          echo "Venta final usada: $VENTA (fuente: $FUENTE_VENTA)"
+
+          # Actualiza la tasa vigente (nodo único que lee el portal)
           curl -s -X PUT \
             -H "Content-Type: application/json" \
-            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"oficial\":\"$OFICIAL_FMT\",\"fecha\":\"$FECHA\",\"auto\":true,\"binance_sell_debug\":\"$BINANCE_SELL_MEDIANA\",\"binance_buy_debug\":\"$BINANCE_BUY_MEDIANA\"}" \
+            -d "{\"compra\":\"$COMPRA\",\"venta\":\"$VENTA\",\"oficial\":\"$OFICIAL_FMT\",\"fecha\":\"$FECHA\",\"auto\":true,\"fuente_venta\":\"$FUENTE_VENTA\",\"binance_buy_ref\":\"$BINANCE_BUY_MEDIANA\"}" \
             "$FIREBASE_DB_URL/p58p2p-tasa.json"
 
           # Agrega un punto al historial (clave autogenerada, no se pisa con otros escritores)
